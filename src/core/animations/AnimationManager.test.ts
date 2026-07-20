@@ -289,5 +289,149 @@ describe('AnimationManager', () => {
         expect(controllers).toContain(r);
       }
     });
+
+    it('should NOT release to pool when user restarts in stopped handler (stop path)', () => {
+      const manager = new AnimationManager();
+      const node = createMockNode();
+
+      // Create and start animation A
+      const ctrlA = manager.createAnimation(
+        node,
+        { x: 100 },
+        { duration: 1000 },
+      );
+      ctrlA.start();
+
+      // Restart the same controller inside the stopped handler
+      ctrlA.on('stopped', () => {
+        ctrlA.start();
+      });
+
+      ctrlA.stop();
+
+      // ctrlA was restarted, so it should NOT be in the pool.
+      // Creating a new animation should yield a DIFFERENT instance.
+      const ctrlB = manager.createAnimation(
+        node,
+        { y: 200 },
+        { duration: 1000 },
+      );
+
+      expect(ctrlB).not.toBe(ctrlA);
+    });
+
+    it('should NOT release to pool when user restarts in stopped handler (finish path)', () => {
+      const manager = new AnimationManager();
+      const node = createMockNode();
+
+      const ctrl = manager.createAnimation(
+        node,
+        { x: 100 },
+        { duration: 100 },
+      );
+      ctrl.start();
+
+      // Restart inside the stopped handler (common pattern for repeatable animations)
+      ctrl.on('stopped', () => {
+        ctrl.start();
+      });
+
+      // Advance past the duration so animation finishes naturally
+      manager.update(200);
+
+      // ctrl was restarted, so it should NOT be in the pool.
+      const ctrl2 = manager.createAnimation(
+        node,
+        { y: 200 },
+        { duration: 1000 },
+      );
+
+      expect(ctrl2).not.toBe(ctrl);
+    });
+
+    it('should animate correct values after pool reuse (no cross-contamination)', () => {
+      const manager = new AnimationManager();
+      const nodeA = createMockNode({ x: 0 });
+      const nodeB = createMockNode({ y: 0 });
+
+      // Create, start, finish animation A on nodeA
+      const ctrlA = manager.createAnimation(
+        nodeA,
+        { x: 100 },
+        { duration: 100 },
+      );
+      ctrlA.start();
+      manager.update(200); // finishes, released to pool
+
+      // Create animation B on nodeB, should reuse pooled objects
+      const ctrlB = manager.createAnimation(
+        nodeB,
+        { y: 500 },
+        { duration: 100 },
+      );
+      ctrlB.start();
+
+      // Advance half-way
+      manager.update(50);
+
+      // nodeB.y should be interpolating toward 500, not stuck at 0 or at nodeA's values
+      const nodeRecord = nodeB as unknown as Record<string, number>;
+      expect(nodeRecord['y']).toBeGreaterThan(0);
+      expect(nodeRecord['y']).toBeLessThanOrEqual(500);
+
+      // nodeA.x should remain at 100 (its finished value), unaffected by B
+      const nodeARecord = nodeA as unknown as Record<string, number>;
+      expect(nodeARecord['x']).toBe(100);
+    });
+
+    it('should not corrupt recycled animation when pause() is called on a stale reference', () => {
+      const manager = new AnimationManager();
+      const node = createMockNode({ x: 0 });
+
+      // Create and run animation to completion → released to pool
+      const ctrl1 = manager.createAnimation(
+        node,
+        { x: 100 },
+        { duration: 100 },
+      );
+      ctrl1.start();
+      manager.update(200); // finishes, released to pool
+      // node.x is now 100
+
+      // Reuse from pool for a new animation
+      const ctrl2 = manager.createAnimation(
+        node,
+        { x: 500 },
+        { duration: 100 },
+      );
+      ctrl2.start();
+
+      // User calls pause() on the OLD stale reference (ctrl1 === ctrl2 after recycle)
+      // Without the guard, this would unregister ctrl2's active animation
+      ctrl1.pause();
+
+      // Advance the frame — ctrl2's animation should still be running
+      manager.update(50);
+
+      const nodeRecord = node as unknown as Record<string, number>;
+      // If pause() corrupted the recycled animation, x would be stuck at 100
+      // With the fix, ctrl1.pause() is a no-op (state was 'stopped' at call time)
+      // so ctrl2's animation runs normally
+      expect(nodeRecord['x']).toBeGreaterThan(100);
+    });
+
+    it('pause() should be a no-op when controller is already stopped', () => {
+      const manager = new AnimationManager();
+      const node = createMockNode();
+
+      const ctrl = manager.createAnimation(
+        node,
+        { x: 100 },
+        { duration: 1000 },
+      );
+      // Never started — state is 'stopped'
+      ctrl.pause();
+      expect(ctrl.state).toBe('stopped');
+    });
   });
 });

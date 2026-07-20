@@ -98,6 +98,12 @@ export class CoreAnimationController
     this.state = 'stopped';
     this.emit('stopped', this);
 
+    // If the user re-started the animation inside the 'stopped' handler,
+    // do NOT release to the pool -- the objects are active again.
+    if (this.state !== 'stopped') {
+      return this;
+    }
+
     if (reset === true) {
       animation.reset();
     }
@@ -169,7 +175,12 @@ export class CoreAnimationController
 
     this.state = 'stopped';
     this.emit('stopped', this);
-    manager.releaseToPool(animation, this);
+
+    // If the user re-started the animation inside the 'stopped' handler,
+    // do NOT release to the pool -- the objects are active again.
+    if (this.state === 'stopped') {
+      manager.releaseToPool(animation, this);
+    }
   };
 
   private onFinished = (): void => {
@@ -199,7 +210,12 @@ export class CoreAnimationController
 
     this.state = 'stopped';
     this.emit('stopped', this);
-    manager.releaseToPool(animation, this);
+
+    // If the user re-started the animation inside the 'stopped' handler,
+    // do NOT release to the pool -- the objects are active again.
+    if (this.state === 'stopped') {
+      manager.releaseToPool(animation, this);
+    }
   };
 
   private onAnimating = (): void => {
