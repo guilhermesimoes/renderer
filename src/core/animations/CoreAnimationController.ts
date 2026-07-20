@@ -42,7 +42,7 @@ export class CoreAnimationController
   private readonly tickPayload: { progress: number } = { progress: 0 };
 
   // Fixed set of event names this controller emits -- used for zero-alloc clearListeners()
-  static readonly EVENTS = ['stopped', 'animating'] as const;
+  static readonly EVENTS = ['stopped', 'animating', 'tick'] as const;
 
   constructor() {
     super();
@@ -51,6 +51,7 @@ export class CoreAnimationController
     // allocate a new [] when the controller is reused after a pool recycle.
     this.eventListeners['stopped'] = [];
     this.eventListeners['animating'] = [];
+    this.eventListeners['tick'] = [];
   }
 
   /**
