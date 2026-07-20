@@ -28,14 +28,13 @@ export class AnimationManager {
   /**
    * Pool of reusable CoreAnimation instances.
    * Animations are returned to the pool when they finish or are stopped.
+   *
+   * Controllers are intentionally NOT pooled. They are the user-facing handles
+   * that callers hold references to, so recycling them would silently alias old
+   * references to new animations, causing stale pause()/stop()/start() calls
+   * to corrupt unrelated animations.
    */
   private animationPool: CoreAnimation[] = [];
-
-  /**
-   * Pool of reusable CoreAnimationController instances.
-   * Controllers are returned to the pool alongside their animation.
-   */
-  private controllerPool: CoreAnimationController[] = [];
 
   registerAnimation(animation: CoreAnimation) {
     animation.activeIndex = this.activeAnimations.length;
@@ -91,32 +90,20 @@ export class AnimationManager {
     }
     animation.init(node, props, settings);
 
-    // Get or create controller
-    let controller: CoreAnimationController;
-    if (this.controllerPool.length > 0) {
-      controller = this.controllerPool.pop()!;
-    } else {
-      controller = new CoreAnimationController();
-    }
+    // Always create a fresh controller -- controllers are the user-facing
+    // handle and must NOT be pooled (see class-level comment on animationPool).
+    const controller = new CoreAnimationController();
     controller.init(this, animation);
 
     return controller;
   }
 
   /**
-   * Return an animation and its controller to the pool for reuse.
+   * Return an animation to the pool for reuse.
    * Called by CoreAnimationController when it reaches a terminal state
    * (after all user event listeners have been notified).
    */
-  releaseToPool(
-    animation: CoreAnimation,
-    controller: CoreAnimationController,
-  ): void {
-    // Do NOT clearListeners here -- init() clears lazily on next reuse.
-    // By the time releaseToPool() fires, unregisterAnimation() has already
-    // emptied all listener arrays via off(). Moving clearListeners to init()
-    // keeps this hot path (inside the rAF completion chain) as cheap as possible.
+  releaseAnimation(animation: CoreAnimation): void {
     this.animationPool.push(animation);
-    this.controllerPool.push(controller);
   }
 }

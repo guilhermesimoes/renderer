@@ -63,7 +63,7 @@ describe('AnimationManager', () => {
       expect(controller1).not.toBe(controller2);
     });
 
-    it('should reuse objects from the pool after stop()', () => {
+    it('should reuse animation objects from the pool after stop()', () => {
       const manager = new AnimationManager();
       const node = createMockNode();
 
@@ -75,19 +75,18 @@ describe('AnimationManager', () => {
       );
       controller1.start();
 
-      // Stop it -- should release to pool
+      // Stop it -- should release animation to pool
       controller1.stop();
 
-      // Pool should now have objects
-      // Create another animation -- should reuse from pool
+      // Create another animation -- animation object should be reused
       const controller2 = manager.createAnimation(
         node,
         { y: 200 },
         { duration: 1000 },
       );
 
-      // The controller instance should be reused (same object reference)
-      expect(controller2).toBe(controller1);
+      // Controllers are NOT pooled -- always fresh instances
+      expect(controller2).not.toBe(controller1);
     });
 
     it('should properly reinitialize recycled objects', () => {
@@ -154,7 +153,7 @@ describe('AnimationManager', () => {
       expect(newStoppedSpy).toHaveBeenCalledTimes(1);
     });
 
-    it('should release to pool on natural animation finish', () => {
+    it('should release animation to pool on natural finish', () => {
       const manager = new AnimationManager();
       const node = createMockNode();
 
@@ -168,17 +167,17 @@ describe('AnimationManager', () => {
       // Duration is 0 so animation finishes immediately on first update
       manager.update(0);
 
-      // Create another -- should reuse from pool
+      // Create another -- animation reused, controller is fresh
       const controller2 = manager.createAnimation(
         node,
         { y: 200 },
         { duration: 1000 },
       );
 
-      expect(controller2).toBe(controller);
+      expect(controller2).not.toBe(controller);
     });
 
-    it('should release to pool on node destruction', () => {
+    it('should release animation to pool on node destruction', () => {
       const manager = new AnimationManager();
       const node = createMockNode();
 
@@ -193,14 +192,14 @@ describe('AnimationManager', () => {
       (node as unknown as Record<string, unknown>).destroyed = true;
       manager.update(16);
 
-      // Create another -- should reuse from pool
+      // Create another -- animation reused, controller is fresh
       const controller2 = manager.createAnimation(
         node,
         { y: 200 },
         { duration: 1000 },
       );
 
-      expect(controller2).toBe(controller);
+      expect(controller2).not.toBe(controller);
     });
 
     it('should NOT release looping animations to pool on finish', () => {
@@ -227,7 +226,7 @@ describe('AnimationManager', () => {
       expect(controller2).not.toBe(controller);
     });
 
-    it('should handle multiple pool cycles', () => {
+    it('should handle multiple animation pool cycles', () => {
       const manager = new AnimationManager();
       const node = createMockNode();
 
@@ -236,22 +235,23 @@ describe('AnimationManager', () => {
       c1.start();
       c1.stop();
 
-      // Cycle 2 -- reuses c1
+      // Cycle 2 -- animation reused, controller is fresh
       const c2 = manager.createAnimation(node, { y: 200 }, { duration: 1000 });
-      expect(c2).toBe(c1);
+      expect(c2).not.toBe(c1);
       c2.start();
       c2.stop();
 
-      // Cycle 3 -- reuses again
+      // Cycle 3 -- animation reused again, controller is fresh
       const c3 = manager.createAnimation(
         node,
         { alpha: 0 },
         { duration: 1000 },
       );
-      expect(c3).toBe(c1);
+      expect(c3).not.toBe(c1);
+      expect(c3).not.toBe(c2);
     });
 
-    it('should grow pool independently for concurrent animations', () => {
+    it('should always create distinct controllers for concurrent animations', () => {
       const manager = new AnimationManager();
       const node = createMockNode();
 
@@ -271,12 +271,12 @@ describe('AnimationManager', () => {
       expect(controllers[0]).not.toBe(controllers[1]);
       expect(controllers[1]).not.toBe(controllers[2]);
 
-      // Stop all -- pool should now have 3
+      // Stop all -- animations return to pool
       for (const c of controllers) {
         c.stop();
       }
 
-      // Create 3 more -- should all reuse from pool
+      // Create 3 more -- controllers are always fresh
       const reused: IAnimationController[] = [];
       for (let i = 0; i < 3; i++) {
         reused.push(
@@ -284,9 +284,9 @@ describe('AnimationManager', () => {
         );
       }
 
-      // Each should be one of the original controllers (pool is LIFO)
+      // Controllers should NOT be reused (no aliasing)
       for (const r of reused) {
-        expect(controllers).toContain(r);
+        expect(controllers).not.toContain(r);
       }
     });
 

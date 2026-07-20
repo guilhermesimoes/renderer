@@ -65,7 +65,7 @@ export class CoreAnimationController
     this.stoppedPromise = null;
     this.stoppedResolve = null;
     // Clear any stale user listeners from the previous use. Near-zero cost
-    // when arrays are already empty (the common case after releaseToPool).
+    // when arrays are already empty (the common case after releaseAnimation).
     this.clearListeners(CoreAnimationController.EVENTS);
   }
 
@@ -108,7 +108,7 @@ export class CoreAnimationController
       animation.reset();
     }
 
-    manager.releaseToPool(animation, this);
+    manager.releaseAnimation(animation);
     return this;
   }
 
@@ -185,7 +185,7 @@ export class CoreAnimationController
     // If the user re-started the animation inside the 'stopped' handler,
     // do NOT release to the pool -- the objects are active again.
     if (this.state === 'stopped') {
-      manager.releaseToPool(animation, this);
+      manager.releaseAnimation(animation);
     }
   };
 
@@ -220,7 +220,7 @@ export class CoreAnimationController
     // If the user re-started the animation inside the 'stopped' handler,
     // do NOT release to the pool -- the objects are active again.
     if (this.state === 'stopped') {
-      manager.releaseToPool(animation, this);
+      manager.releaseAnimation(animation);
     }
   };
 
