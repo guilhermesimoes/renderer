@@ -113,12 +113,18 @@ export class CoreAnimationController
   }
 
   pause(): IAnimationController {
+    if (this.state !== 'running' && this.state !== 'scheduled') {
+      return this;
+    }
     this.unregisterAnimation();
     this.state = 'paused';
     return this;
   }
 
   restore(): IAnimationController {
+    if (this.state === 'stopped') {
+      return this;
+    }
     this.stoppedResolve = null;
     this.animation.restore();
     return this;
