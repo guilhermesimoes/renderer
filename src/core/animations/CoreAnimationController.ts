@@ -64,8 +64,7 @@ export class CoreAnimationController
     this.state = 'stopped';
     this.stoppedPromise = null;
     this.stoppedResolve = null;
-    // Clear any stale user listeners from the previous use. Near-zero cost
-    // when arrays are already empty (the common case after releaseAnimation).
+    // Clear any stale user listeners from the previous use.
     this.clearListeners(CoreAnimationController.EVENTS);
   }
 
@@ -84,12 +83,6 @@ export class CoreAnimationController
     }
     this.unregisterAnimation();
 
-    // Capture refs before emit -- the user's stopped callback may synchronously
-    // call createAnimation() which recycles these objects from the pool.
-    // Releasing AFTER emit with captured refs prevents corrupting the recycled objects.
-    const animation = this.animation;
-    const manager = this.manager;
-
     if (this.stoppedResolve !== null) {
       this.stoppedResolve();
       this.stoppedResolve = null;
@@ -98,17 +91,10 @@ export class CoreAnimationController
     this.state = 'stopped';
     this.emit('stopped', this);
 
-    // If the user re-started the animation inside the 'stopped' handler,
-    // do NOT release to the pool -- the objects are active again.
-    if (this.state !== 'stopped') {
-      return this;
-    }
-
     if (reset === true) {
-      animation.reset();
+      this.animation.reset();
     }
 
-    manager.releaseAnimation(animation);
     return this;
   }
 
@@ -170,10 +156,6 @@ export class CoreAnimationController
   private onDestroy = (): void => {
     this.unregisterAnimation();
 
-    // Capture refs before emit -- same race condition guard as stop()/onFinished()
-    const animation = this.animation;
-    const manager = this.manager;
-
     if (this.stoppedResolve !== null) {
       this.stoppedResolve();
       this.stoppedResolve = null;
@@ -181,12 +163,6 @@ export class CoreAnimationController
 
     this.state = 'stopped';
     this.emit('stopped', this);
-
-    // If the user re-started the animation inside the 'stopped' handler,
-    // do NOT release to the pool -- the objects are active again.
-    if (this.state === 'stopped') {
-      manager.releaseAnimation(animation);
-    }
   };
 
   private onFinished = (): void => {
@@ -203,12 +179,6 @@ export class CoreAnimationController
 
     this.unregisterAnimation();
 
-    // Capture refs before emit -- the user's stopped callback may synchronously
-    // call createAnimation() which recycles these objects from the pool.
-    // Releasing AFTER emit with captured refs prevents corrupting the recycled objects.
-    const animation = this.animation;
-    const manager = this.manager;
-
     if (this.stoppedResolve !== null) {
       this.stoppedResolve();
       this.stoppedResolve = null;
@@ -216,12 +186,6 @@ export class CoreAnimationController
 
     this.state = 'stopped';
     this.emit('stopped', this);
-
-    // If the user re-started the animation inside the 'stopped' handler,
-    // do NOT release to the pool -- the objects are active again.
-    if (this.state === 'stopped') {
-      manager.releaseAnimation(animation);
-    }
   };
 
   private onAnimating = (): void => {

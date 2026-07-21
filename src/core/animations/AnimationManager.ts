@@ -25,17 +25,6 @@ import type { IAnimationController } from '../../common/IAnimationController.js'
 export class AnimationManager {
   private activeAnimations: CoreAnimation[] = [];
 
-  /**
-   * Pool of reusable CoreAnimation instances.
-   * Animations are returned to the pool when they finish or are stopped.
-   *
-   * Controllers are intentionally NOT pooled. They are the user-facing handles
-   * that callers hold references to, so recycling them would silently alias old
-   * references to new animations, causing stale pause()/stop()/start() calls
-   * to corrupt unrelated animations.
-   */
-  private animationPool: CoreAnimation[] = [];
-
   registerAnimation(animation: CoreAnimation) {
     animation.activeIndex = this.activeAnimations.length;
     this.activeAnimations.push(animation);
@@ -72,38 +61,19 @@ export class AnimationManager {
   }
 
   /**
-   * Create an animation controller, reusing pooled objects when available.
-   * Objects are returned to the pool when the controller reaches a terminal
-   * state (stopped via finish, manual stop, or node destruction).
+   * Create a new animation and its controller.
    */
   createAnimation(
     node: CoreNode,
     props: Partial<CoreNodeAnimateProps>,
     settings: Partial<AnimationSettings>,
   ): IAnimationController {
-    // Get or create animation
-    let animation: CoreAnimation;
-    if (this.animationPool.length > 0) {
-      animation = this.animationPool.pop()!;
-    } else {
-      animation = new CoreAnimation();
-    }
+    const animation = new CoreAnimation();
     animation.init(node, props, settings);
 
-    // Always create a fresh controller -- controllers are the user-facing
-    // handle and must NOT be pooled (see class-level comment on animationPool).
     const controller = new CoreAnimationController();
     controller.init(this, animation);
 
     return controller;
-  }
-
-  /**
-   * Return an animation to the pool for reuse.
-   * Called by CoreAnimationController when it reaches a terminal state
-   * (after all user event listeners have been notified).
-   */
-  releaseAnimation(animation: CoreAnimation): void {
-    this.animationPool.push(animation);
   }
 }

@@ -43,8 +43,8 @@ function createMockNode(overrides: Record<string, unknown> = {}): CoreNode {
 }
 
 describe('AnimationManager', () => {
-  describe('object pooling', () => {
-    it('should create fresh objects when pool is empty', () => {
+  describe('createAnimation', () => {
+    it('should create distinct controller instances', () => {
       const manager = new AnimationManager();
       const node = createMockNode();
 
@@ -59,297 +59,27 @@ describe('AnimationManager', () => {
         { duration: 1000 },
       );
 
-      // Should be different controller instances
       expect(controller1).not.toBe(controller2);
     });
 
-    it('should reuse animation objects from the pool after stop()', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      // Create and start an animation
-      const controller1 = manager.createAnimation(
-        node,
-        { x: 100 },
-        { duration: 1000 },
-      );
-      controller1.start();
-
-      // Stop it -- should release animation to pool
-      controller1.stop();
-
-      // Create another animation -- animation object should be reused
-      const controller2 = manager.createAnimation(
-        node,
-        { y: 200 },
-        { duration: 1000 },
-      );
-
-      // Controllers are NOT pooled -- always fresh instances
-      expect(controller2).not.toBe(controller1);
-    });
-
-    it('should properly reinitialize recycled objects', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      // Create, start, and stop
-      const controller1 = manager.createAnimation(
-        node,
-        { x: 100 },
-        { duration: 500 },
-      );
-      controller1.start();
-      controller1.stop();
-
-      // Reuse from pool with different props
-      const controller2 = manager.createAnimation(
-        node,
-        { y: 200 },
-        { duration: 1000 },
-      );
-
-      // Should be stopped state (reinitialized)
-      expect(controller2.state).toBe('stopped');
-
-      // Should be startable
-      controller2.start();
-      expect(controller2.state).toBe('scheduled');
-    });
-
-    it('should clear event listeners on recycled objects', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      // Create and add a user listener
-      const controller1 = manager.createAnimation(
-        node,
-        { x: 100 },
-        { duration: 1000 },
-      );
-      const stoppedSpy = vi.fn();
-      controller1.on('stopped', stoppedSpy);
-      controller1.start();
-      controller1.stop();
-
-      // The stopped listener should have fired once
-      expect(stoppedSpy).toHaveBeenCalledTimes(1);
-
-      // Reuse from pool
-      const controller2 = manager.createAnimation(
-        node,
-        { y: 200 },
-        { duration: 1000 },
-      );
-
-      // Old listener should not fire on the recycled controller
-      const newStoppedSpy = vi.fn();
-      controller2.on('stopped', newStoppedSpy);
-      controller2.start();
-      controller2.stop();
-
-      // Only the new spy should have fired, not the old one
-      expect(stoppedSpy).toHaveBeenCalledTimes(1); // still 1 from before
-      expect(newStoppedSpy).toHaveBeenCalledTimes(1);
-    });
-
-    it('should release animation to pool on natural finish', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      const controller = manager.createAnimation(
-        node,
-        { x: 100 },
-        { duration: 0 },
-      );
-      controller.start();
-
-      // Duration is 0 so animation finishes immediately on first update
-      manager.update(0);
-
-      // Create another -- animation reused, controller is fresh
-      const controller2 = manager.createAnimation(
-        node,
-        { y: 200 },
-        { duration: 1000 },
-      );
-
-      expect(controller2).not.toBe(controller);
-    });
-
-    it('should release animation to pool on node destruction', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      const controller = manager.createAnimation(
-        node,
-        { x: 100 },
-        { duration: 1000 },
-      );
-      controller.start();
-
-      // Simulate node destruction
-      (node as unknown as Record<string, unknown>).destroyed = true;
-      manager.update(16);
-
-      // Create another -- animation reused, controller is fresh
-      const controller2 = manager.createAnimation(
-        node,
-        { y: 200 },
-        { duration: 1000 },
-      );
-
-      expect(controller2).not.toBe(controller);
-    });
-
-    it('should NOT release looping animations to pool on finish', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      const controller = manager.createAnimation(
-        node,
-        { x: 100 },
-        { duration: 100, loop: true },
-      );
-      controller.start();
-
-      // Advance past the duration
-      manager.update(200);
-
-      // Create another -- should NOT reuse the looping controller
-      const controller2 = manager.createAnimation(
-        node,
-        { y: 200 },
-        { duration: 1000 },
-      );
-
-      expect(controller2).not.toBe(controller);
-    });
-
-    it('should handle multiple animation pool cycles', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      // Cycle 1
-      const c1 = manager.createAnimation(node, { x: 100 }, { duration: 1000 });
-      c1.start();
-      c1.stop();
-
-      // Cycle 2 -- animation reused, controller is fresh
-      const c2 = manager.createAnimation(node, { y: 200 }, { duration: 1000 });
-      expect(c2).not.toBe(c1);
-      c2.start();
-      c2.stop();
-
-      // Cycle 3 -- animation reused again, controller is fresh
-      const c3 = manager.createAnimation(
-        node,
-        { alpha: 0 },
-        { duration: 1000 },
-      );
-      expect(c3).not.toBe(c1);
-      expect(c3).not.toBe(c2);
-    });
-
-    it('should always create distinct controllers for concurrent animations', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      // Create 3 concurrent animations
-      const controllers: IAnimationController[] = [];
-      for (let i = 0; i < 3; i++) {
-        const c = manager.createAnimation(
-          node,
-          { x: i * 100 },
-          { duration: 1000 },
-        );
-        c.start();
-        controllers.push(c);
-      }
-
-      // All should be distinct
-      expect(controllers[0]).not.toBe(controllers[1]);
-      expect(controllers[1]).not.toBe(controllers[2]);
-
-      // Stop all -- animations return to pool
-      for (const c of controllers) {
-        c.stop();
-      }
-
-      // Create 3 more -- controllers are always fresh
-      const reused: IAnimationController[] = [];
-      for (let i = 0; i < 3; i++) {
-        reused.push(
-          manager.createAnimation(node, { y: i * 100 }, { duration: 1000 }),
-        );
-      }
-
-      // Controllers should NOT be reused (no aliasing)
-      for (const r of reused) {
-        expect(controllers).not.toContain(r);
-      }
-    });
-
-    it('should NOT release to pool when user restarts in stopped handler (stop path)', () => {
-      const manager = new AnimationManager();
-      const node = createMockNode();
-
-      // Create and start animation A
-      const ctrlA = manager.createAnimation(
-        node,
-        { x: 100 },
-        { duration: 1000 },
-      );
-      ctrlA.start();
-
-      // Restart the same controller inside the stopped handler
-      ctrlA.on('stopped', () => {
-        ctrlA.start();
-      });
-
-      ctrlA.stop();
-
-      // ctrlA was restarted, so it should NOT be in the pool.
-      // Creating a new animation should yield a DIFFERENT instance.
-      const ctrlB = manager.createAnimation(
-        node,
-        { y: 200 },
-        { duration: 1000 },
-      );
-
-      expect(ctrlB).not.toBe(ctrlA);
-    });
-
-    it('should NOT release to pool when user restarts in stopped handler (finish path)', () => {
+    it('should create controllers in stopped state', () => {
       const manager = new AnimationManager();
       const node = createMockNode();
 
       const ctrl = manager.createAnimation(
         node,
         { x: 100 },
-        { duration: 100 },
-      );
-      ctrl.start();
-
-      // Restart inside the stopped handler (common pattern for repeatable animations)
-      ctrl.on('stopped', () => {
-        ctrl.start();
-      });
-
-      // Advance past the duration so animation finishes naturally
-      manager.update(200);
-
-      // ctrl was restarted, so it should NOT be in the pool.
-      const ctrl2 = manager.createAnimation(
-        node,
-        { y: 200 },
         { duration: 1000 },
       );
 
-      expect(ctrl2).not.toBe(ctrl);
+      expect(ctrl.state).toBe('stopped');
+      ctrl.start();
+      expect(ctrl.state).toBe('scheduled');
     });
+  });
 
-    it('should animate correct values after pool reuse (no cross-contamination)', () => {
+  describe('animation lifecycle', () => {
+    it('should animate correct values across sequential animations', () => {
       const manager = new AnimationManager();
       const nodeA = createMockNode({ x: 0 });
       const nodeB = createMockNode({ y: 0 });
@@ -361,9 +91,9 @@ describe('AnimationManager', () => {
         { duration: 100 },
       );
       ctrlA.start();
-      manager.update(200); // finishes, released to pool
+      manager.update(200); // finishes
 
-      // Create animation B on nodeB, should reuse pooled objects
+      // Create animation B on nodeB
       const ctrlB = manager.createAnimation(
         nodeB,
         { y: 500 },
@@ -374,7 +104,7 @@ describe('AnimationManager', () => {
       // Advance half-way
       manager.update(50);
 
-      // nodeB.y should be interpolating toward 500, not stuck at 0 or at nodeA's values
+      // nodeB.y should be interpolating toward 500
       const nodeRecord = nodeB as unknown as Record<string, number>;
       expect(nodeRecord['y']).toBeGreaterThan(0);
       expect(nodeRecord['y']).toBeLessThanOrEqual(500);
@@ -384,21 +114,42 @@ describe('AnimationManager', () => {
       expect(nodeARecord['x']).toBe(100);
     });
 
-    it('should not corrupt recycled animation when pause() is called on a stale reference', () => {
+    it('should allow restarting a controller from its stopped handler', () => {
+      const manager = new AnimationManager();
+      const node = createMockNode();
+
+      const ctrl = manager.createAnimation(node, { x: 100 }, { duration: 100 });
+      ctrl.start();
+
+      let restartCount = 0;
+      ctrl.on('stopped', () => {
+        if (restartCount < 1) {
+          restartCount++;
+          ctrl.start();
+        }
+      });
+
+      // Finish the animation -- stopped handler restarts it
+      manager.update(200);
+
+      // Controller should be active again
+      expect(ctrl.state).toBe('scheduled');
+    });
+
+    it('should not corrupt a new animation when pause() is called on a finished controller', () => {
       const manager = new AnimationManager();
       const node = createMockNode({ x: 0 });
 
-      // Create and run animation to completion → released to pool
+      // Create and finish animation
       const ctrl1 = manager.createAnimation(
         node,
         { x: 100 },
         { duration: 100 },
       );
       ctrl1.start();
-      manager.update(200); // finishes, released to pool
-      // node.x is now 100
+      manager.update(200); // finishes
 
-      // Reuse from pool for a new animation
+      // Create new animation on same node
       const ctrl2 = manager.createAnimation(
         node,
         { x: 500 },
@@ -406,17 +157,13 @@ describe('AnimationManager', () => {
       );
       ctrl2.start();
 
-      // User calls pause() on the OLD stale reference (ctrl1 === ctrl2 after recycle)
-      // Without the guard, this would unregister ctrl2's active animation
+      // Stale pause() on old controller should be a no-op
       ctrl1.pause();
 
-      // Advance the frame — ctrl2's animation should still be running
+      // ctrl2's animation should still be running
       manager.update(50);
 
       const nodeRecord = node as unknown as Record<string, number>;
-      // If pause() corrupted the recycled animation, x would be stuck at 100
-      // With the fix, ctrl1.pause() is a no-op (state was 'stopped' at call time)
-      // so ctrl2's animation runs normally
       expect(nodeRecord['x']).toBeGreaterThan(100);
     });
 
@@ -429,9 +176,64 @@ describe('AnimationManager', () => {
         { x: 100 },
         { duration: 1000 },
       );
-      // Never started — state is 'stopped'
       ctrl.pause();
       expect(ctrl.state).toBe('stopped');
+    });
+
+    it('should NOT release looping animations on loop boundary', () => {
+      const manager = new AnimationManager();
+      const node = createMockNode();
+
+      const ctrl = manager.createAnimation(
+        node,
+        { x: 100 },
+        { duration: 100, loop: true },
+      );
+      ctrl.start();
+
+      // Advance past the duration -- should loop, not stop
+      manager.update(200);
+
+      expect(ctrl.state).not.toBe('stopped');
+    });
+
+    it('should stop on node destruction', () => {
+      const manager = new AnimationManager();
+      const node = createMockNode();
+      const stoppedSpy = vi.fn();
+
+      const ctrl = manager.createAnimation(
+        node,
+        { x: 100 },
+        { duration: 1000 },
+      );
+      ctrl.on('stopped', stoppedSpy);
+      ctrl.start();
+
+      (node as unknown as Record<string, unknown>).destroyed = true;
+      manager.update(16);
+
+      expect(ctrl.state).toBe('stopped');
+      expect(stoppedSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should create distinct controllers for concurrent animations', () => {
+      const manager = new AnimationManager();
+      const node = createMockNode();
+
+      const controllers: IAnimationController[] = [];
+      for (let i = 0; i < 3; i++) {
+        const c = manager.createAnimation(
+          node,
+          { x: i * 100 },
+          { duration: 1000 },
+        );
+        c.start();
+        controllers.push(c);
+      }
+
+      expect(controllers[0]).not.toBe(controllers[1]);
+      expect(controllers[1]).not.toBe(controllers[2]);
     });
   });
 });
